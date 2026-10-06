@@ -1,7 +1,6 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from transformers import pipeline
 
 from disease_database import get_disease_info, DISEASE_DATABASE
 from medicine_database import get_all_medicines, get_medicine_by_id
@@ -13,13 +12,26 @@ app = FastAPI()
 # =========================================================
 # AI IMAGE CLASSIFIER
 # =========================================================
+image_classifier = None
 
-image_classifier = pipeline(
-    "image-classification",
-    model="kimcomehome/plantvillage-vit-leaf-disease"
-)
+def get_image_classifier():
 
+    global image_classifier
 
+    if image_classifier is None:
+
+        print("Loading AI image classifier...")
+
+        from transformers import pipeline
+
+        image_classifier = pipeline(
+            "image-classification",
+            model="kimcomehome/plantvillage-vit-leaf-disease"
+        )
+
+        print("AI image classifier loaded successfully.")
+
+    return image_classifier
 # =========================================================
 # CORS
 # =========================================================
@@ -531,8 +543,9 @@ async def upload_image(
         # AI PREDICTION
         # -------------------------------------------------
 
-        predictions = image_classifier(image)
+        classifier = get_image_classifier()
 
+        predictions = classifier(image)
         if not predictions:
 
             return {
