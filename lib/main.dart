@@ -92,7 +92,7 @@ class _HomePageState extends State<HomePage> {
   // =========================================================
 
   static const String backendUrl =
-      'http://192.168.1.39:8000';
+      'https://krushi-vaani.onrender.com';
 
   // =========================================================
   // INITIALIZATION
@@ -2826,7 +2826,7 @@ class GovernmentSchemesPage extends StatefulWidget {
 class _GovernmentSchemesPageState
     extends State<GovernmentSchemesPage> {
   static const String backendUrl =
-      'http://192.168.1.39:8000';
+      'https://krushi-vaani.onrender.com';
 
   bool isLoading = true;
 
@@ -3286,7 +3286,7 @@ class _AgricultureMedicinePageState
     extends State<
         AgricultureMedicinePage> {
   static const String backendUrl =
-      'http://192.168.1.39:8000';
+      'https://krushi-vaani.onrender.com';
 
   bool isLoading = true;
 
@@ -3659,7 +3659,7 @@ class FarmerNotificationsPage extends StatefulWidget {
 
 class _FarmerNotificationsPageState
     extends State<FarmerNotificationsPage> {
-  static const String backendUrl = 'http://192.168.1.39:8000';
+  static const String backendUrl = 'https://krushi-vaani.onrender.com';
 
   bool isLoading = true;
   List<dynamic> notifications = [];

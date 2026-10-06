@@ -1,37 +1,36 @@
+import os
+import io
+import json
+import shutil
+
+import numpy as np
+import onnxruntime as ort
+
+from PIL import Image
+from huggingface_hub import snapshot_download
+
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from disease_database import get_disease_info, DISEASE_DATABASE
-from medicine_database import get_all_medicines, get_medicine_by_id
+from disease_database import (
+    get_disease_info,
+    DISEASE_DATABASE
+)
 
+from medicine_database import (
+    get_all_medicines,
+    get_medicine_by_id
+)
+
+
+# =========================================================
+# APP
+# =========================================================
 
 app = FastAPI()
 
 
-# =========================================================
-# AI IMAGE CLASSIFIER
-# =========================================================
-image_classifier = None
-
-def get_image_classifier():
-
-    global image_classifier
-
-    if image_classifier is None:
-
-        print("Loading AI image classifier...")
-
-        from transformers import pipeline
-
-        image_classifier = pipeline(
-            "image-classification",
-            model="kimcomehome/plantvillage-vit-leaf-disease"
-        )
-
-        print("AI image classifier loaded successfully.")
-
-    return image_classifier
 # =========================================================
 # CORS
 # =========================================================
@@ -46,13 +45,415 @@ app.add_middleware(
 
 
 # =========================================================
+# CROP DISEASE AI - ONNX
+# =========================================================
+
+AI_MODEL_REPO = "BiernyVR/crop-disease-classifier"
+
+ai_session = None
+ai_input_name = None
+ai_labels = None
+
+
+# =========================================================
+# LOAD AI MODEL
+# =========================================================
+
+def get_ai_model():
+
+    global ai_session
+    global ai_input_name
+    global ai_labels
+
+    # If already loaded, reuse it
+    if ai_session is not None:
+
+        return (
+            ai_session,
+            ai_input_name,
+            ai_labels
+        )
+
+    print(
+        "Downloading/loading crop disease AI model..."
+    )
+
+    # -----------------------------------------------------
+    # Download required files
+    # -----------------------------------------------------
+
+    model_dir = snapshot_download(
+        repo_id=AI_MODEL_REPO,
+        allow_patterns=[
+            "efficientnet_v2_s_best.onnx",
+            "efficientnet_v2_s_best.onnx.data",
+            "classes.json"
+        ]
+    )
+
+    print(
+        "Hugging Face model directory:"
+    )
+
+    print(model_dir)
+
+    # -----------------------------------------------------
+    # Local model directory
+    # -----------------------------------------------------
+
+    local_model_dir = os.path.join(
+        os.path.dirname(__file__),
+        "ai_model"
+    )
+
+    os.makedirs(
+        local_model_dir,
+        exist_ok=True
+    )
+
+    # -----------------------------------------------------
+    # Source files
+    # -----------------------------------------------------
+
+    source_model = os.path.join(
+        model_dir,
+        "efficientnet_v2_s_best.onnx"
+    )
+
+    source_data = os.path.join(
+        model_dir,
+        "efficientnet_v2_s_best.onnx.data"
+    )
+
+    source_labels = os.path.join(
+        model_dir,
+        "classes.json"
+    )
+
+    # -----------------------------------------------------
+    # Local files
+    # -----------------------------------------------------
+
+    model_path = os.path.join(
+        local_model_dir,
+        "efficientnet_v2_s_best.onnx"
+    )
+
+    data_path = os.path.join(
+        local_model_dir,
+        "efficientnet_v2_s_best.onnx.data"
+    )
+
+    labels_path = os.path.join(
+        local_model_dir,
+        "classes.json"
+    )
+
+    # -----------------------------------------------------
+    # Copy model
+    # -----------------------------------------------------
+
+    print(
+        "Preparing local AI model files..."
+    )
+
+    if not os.path.exists(model_path):
+
+        print(
+            "Copying ONNX model..."
+        )
+
+        shutil.copy2(
+            source_model,
+            model_path
+        )
+
+    else:
+
+        print(
+            "ONNX model already exists."
+        )
+
+    # -----------------------------------------------------
+    # Copy external data
+    # -----------------------------------------------------
+
+    if not os.path.exists(data_path):
+
+        print(
+            "Copying ONNX external data..."
+        )
+
+        shutil.copy2(
+            source_data,
+            data_path
+        )
+
+    else:
+
+        print(
+            "ONNX external data already exists."
+        )
+
+    # -----------------------------------------------------
+    # Copy labels
+    # -----------------------------------------------------
+
+    if not os.path.exists(labels_path):
+
+        print(
+            "Copying class labels..."
+        )
+
+        shutil.copy2(
+            source_labels,
+            labels_path
+        )
+
+    else:
+
+        print(
+            "Class labels already exist."
+        )
+
+    # -----------------------------------------------------
+    # Load classes
+    # -----------------------------------------------------
+
+    print(
+        "Loading class labels..."
+    )
+
+    with open(
+        labels_path,
+        "r",
+        encoding="utf-8"
+    ) as file:
+
+        class_data = json.load(file)
+
+    # classes.json structure:
+    #
+    # {
+    #     "model_name": "...",
+    #     "image_size": 224,
+    #     "num_classes": 38,
+    #     "classes": [...]
+    # }
+
+    ai_labels = class_data["classes"]
+
+    print(
+        f"Loaded {len(ai_labels)} disease classes."
+    )
+
+    # -----------------------------------------------------
+    # Load ONNX model
+    # -----------------------------------------------------
+
+    print(
+        "Loading ONNX model..."
+    )
+
+    ai_session = ort.InferenceSession(
+        model_path,
+        providers=[
+            "CPUExecutionProvider"
+        ]
+    )
+
+    # -----------------------------------------------------
+    # Input name
+    # -----------------------------------------------------
+
+    ai_input_name = (
+        ai_session
+        .get_inputs()[0]
+        .name
+    )
+
+    print(
+        "Crop disease AI model loaded successfully."
+    )
+
+    print(
+        "AI input name:",
+        ai_input_name
+    )
+
+    return (
+        ai_session,
+        ai_input_name,
+        ai_labels
+    )
+
+
+# =========================================================
+# PREDICT CROP DISEASE
+# =========================================================
+
+def predict_crop_disease(image):
+
+    session, input_name, labels = (
+        get_ai_model()
+    )
+
+    # -----------------------------------------------------
+    # Convert image to RGB
+    # -----------------------------------------------------
+
+    image = image.convert("RGB")
+
+    # -----------------------------------------------------
+    # Resize
+    # -----------------------------------------------------
+
+    image = image.resize(
+        (224, 224)
+    )
+
+    # -----------------------------------------------------
+    # Convert to NumPy
+    # -----------------------------------------------------
+
+    image_array = np.array(
+        image
+    ).astype(
+        np.float32
+    )
+
+    # -----------------------------------------------------
+    # Normalize 0-255 -> 0-1
+    # -----------------------------------------------------
+
+    image_array = (
+        image_array / 255.0
+    )
+
+    # -----------------------------------------------------
+    # ImageNet normalization
+    # -----------------------------------------------------
+
+    mean = np.array(
+        [
+            0.485,
+            0.456,
+            0.406
+        ],
+        dtype=np.float32
+    )
+
+    std = np.array(
+        [
+            0.229,
+            0.224,
+            0.225
+        ],
+        dtype=np.float32
+    )
+
+    image_array = (
+        image_array - mean
+    ) / std
+
+    # -----------------------------------------------------
+    # HWC -> CHW
+    # -----------------------------------------------------
+
+    image_array = np.transpose(
+        image_array,
+        (2, 0, 1)
+    )
+
+    # -----------------------------------------------------
+    # Add batch dimension
+    # -----------------------------------------------------
+
+    image_array = np.expand_dims(
+        image_array,
+        axis=0
+    )
+
+    # -----------------------------------------------------
+    # ONNX inference
+    # -----------------------------------------------------
+
+    outputs = session.run(
+        None,
+        {
+            input_name: image_array
+        }
+    )
+
+    scores = outputs[0][0]
+
+    # -----------------------------------------------------
+    # Softmax
+    # -----------------------------------------------------
+
+    exp_scores = np.exp(
+        scores - np.max(scores)
+    )
+
+    probabilities = (
+        exp_scores /
+        exp_scores.sum()
+    )
+
+    # -----------------------------------------------------
+    # Top 5
+    # -----------------------------------------------------
+
+    top_indices = np.argsort(
+        probabilities
+    )[::-1][:5]
+
+    predictions = []
+
+    for index in top_indices:
+
+        index = int(index)
+
+        # Get actual disease name
+        if index < len(labels):
+
+            label = labels[index]
+
+        else:
+
+            label = (
+                f"Class {index}"
+            )
+
+        # Probability as decimal
+        score = float(
+            probabilities[index]
+        )
+
+        predictions.append(
+            {
+                "label": label,
+                "score": round(
+                    score,
+                    6
+                )
+            }
+        )
+
+    return predictions
+
+
+# =========================================================
 # HOME
 # =========================================================
 
 @app.get("/")
 def home():
+
     return {
-        "message": "KrushiVaani Backend is Running!",
+        "message": (
+            "KrushiVaani Backend is Running!"
+        ),
         "status": "success"
     }
 
@@ -62,8 +463,13 @@ def home():
 # =========================================================
 
 class ProblemRequest(BaseModel):
+
     problem: str
 
+
+# =========================================================
+# CLASSIFY FARMER PROBLEM
+# =========================================================
 
 def classify_problem(problem: str):
 
@@ -114,19 +520,39 @@ def classify_problem(problem: str):
         "fertilizer"
     ]
 
-    if any(word in text for word in pest_words):
+    if any(
+        word in text
+        for word in pest_words
+    ):
+
         return "pest"
 
-    elif any(word in text for word in water_words):
+    elif any(
+        word in text
+        for word in water_words
+    ):
+
         return "water"
 
-    elif any(word in text for word in leaf_words):
+    elif any(
+        word in text
+        for word in leaf_words
+    ):
+
         return "leaf"
 
-    elif any(word in text for word in disease_words):
+    elif any(
+        word in text
+        for word in disease_words
+    ):
+
         return "disease"
 
-    elif any(word in text for word in fertilizer_words):
+    elif any(
+        word in text
+        for word in fertilizer_words
+    ):
+
         return "fertilizer"
 
     return "unknown"
@@ -142,8 +568,9 @@ def generate_farmer_response(category):
 
         return {
             "answer": (
-                "ನಿಮ್ಮ ಬೆಳೆಗೆ ಕೀಟ ಅಥವಾ ಹುಳು ಸಮಸ್ಯೆ ಇರುವಂತೆ ಕಾಣುತ್ತಿದೆ. "
-                "ಮೊದಲು ಯಾವ ಕೀಟ ಎಂದು ಗುರುತಿಸುವುದು ಮುಖ್ಯ."
+                "ನಿಮ್ಮ ಬೆಳೆಗೆ ಕೀಟ ಅಥವಾ ಹುಳು ಸಮಸ್ಯೆ "
+                "ಇರುವಂತೆ ಕಾಣುತ್ತಿದೆ. ಮೊದಲು ಯಾವ ಕೀಟ "
+                "ಎಂದು ಗುರುತಿಸುವುದು ಮುಖ್ಯ."
             ),
 
             "main_advice": [
@@ -237,7 +664,8 @@ def generate_farmer_response(category):
 
         return {
             "answer": (
-                "ನಿಮ್ಮ ಬೆಳೆಯಲ್ಲಿ ರೋಗದ ಲಕ್ಷಣಗಳು ಕಂಡುಬರುತ್ತಿರುವಂತೆ ಕಾಣುತ್ತಿದೆ."
+                "ನಿಮ್ಮ ಬೆಳೆಯಲ್ಲಿ ರೋಗದ ಲಕ್ಷಣಗಳು "
+                "ಕಂಡುಬರುತ್ತಿರುವಂತೆ ಕಾಣುತ್ತಿದೆ."
             ),
 
             "main_advice": [
@@ -297,7 +725,8 @@ def generate_farmer_response(category):
 
         return {
             "answer": (
-                "ನಿಮ್ಮ ಸಮಸ್ಯೆಯನ್ನು ಸಂಪೂರ್ಣವಾಗಿ ಅರ್ಥಮಾಡಿಕೊಳ್ಳಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ."
+                "ನಿಮ್ಮ ಸಮಸ್ಯೆಯನ್ನು ಸಂಪೂರ್ಣವಾಗಿ ಅರ್ಥಮಾಡಿಕೊಳ್ಳಲು "
+                "ಸಾಧ್ಯವಾಗಲಿಲ್ಲ."
             ),
 
             "main_advice": [
@@ -326,13 +755,19 @@ def generate_farmer_response(category):
 # =========================================================
 
 @app.post("/problem")
-def receive_problem(data: ProblemRequest):
+def receive_problem(
+    data: ProblemRequest
+):
 
     problem = data.problem
 
-    category = classify_problem(problem)
+    category = classify_problem(
+        problem
+    )
 
-    response = generate_farmer_response(category)
+    response = generate_farmer_response(
+        category
+    )
 
     return {
         "message": "KrushiVaani Response",
@@ -353,6 +788,7 @@ def receive_problem(data: ProblemRequest):
 def normalize_label(label: str) -> str:
 
     if not label:
+
         return ""
 
     return (
@@ -367,9 +803,9 @@ def normalize_label(label: str) -> str:
 # =========================================================
 # FIND DISEASE INFORMATION
 # =========================================================
-
-def find_disease_information(label: str):
-
+def find_disease_information(
+    label: str
+):
     if not label:
         return None
 
@@ -383,10 +819,14 @@ def find_disease_information(label: str):
         return info
 
     # -----------------------------------------------------
-    # 2. Normalized match
+    # 2. Normalize label
     # -----------------------------------------------------
 
     normalized_label = normalize_label(label)
+
+    # -----------------------------------------------------
+    # 3. Exact normalized database match
+    # -----------------------------------------------------
 
     for key, value in DISEASE_DATABASE.items():
 
@@ -396,24 +836,39 @@ def find_disease_information(label: str):
             return value
 
     # -----------------------------------------------------
-    # 3. Partial match
+    # 4. IMPORTANT:
+    # Match crop + disease together
+    # Do NOT match "healthy" alone.
     # -----------------------------------------------------
 
-    for key, value in DISEASE_DATABASE.items():
+    label_parts = normalized_label.split("___")
 
-        normalized_key = normalize_label(key)
+    if len(label_parts) >= 2:
 
-        if (
-            normalized_label in normalized_key
-            or normalized_key in normalized_label
-        ):
-            return value
+        crop_part = label_parts[0]
+        disease_part = label_parts[1]
+
+        for key, value in DISEASE_DATABASE.items():
+
+            normalized_key = normalize_label(key)
+
+            key_parts = normalized_key.split("___")
+
+            if len(key_parts) >= 2:
+
+                db_crop = key_parts[0]
+                db_disease = key_parts[1]
+
+                # Both crop and disease must match
+                if (
+                    crop_part == db_crop
+                    and disease_part == db_disease
+                ):
+                    return value
 
     # -----------------------------------------------------
-    # 4. Disease-name based matching
+    # 5. Disease-specific matching
     # -----------------------------------------------------
-
-    label_lower = label.lower()
 
     disease_keywords = {
 
@@ -426,10 +881,6 @@ def find_disease_information(label: str):
             "yellow_leaf_curl",
             "yellow leaf curl",
             "yellow_leaf_curl_virus"
-        ],
-
-        "healthy": [
-            "healthy"
         ],
 
         "late_blight": [
@@ -452,6 +903,8 @@ def find_disease_information(label: str):
         ]
     }
 
+    label_lower = label.lower()
+
     for disease_key, keywords in disease_keywords.items():
 
         for keyword in keywords:
@@ -460,24 +913,227 @@ def find_disease_information(label: str):
 
                 for db_key, value in DISEASE_DATABASE.items():
 
-                    if disease_key in normalize_label(db_key):
+                    normalized_db_key = normalize_label(
+                        db_key
+                    )
 
-                        return value
+                    if disease_key in normalized_db_key:
+
+                        # If possible, also verify crop
+                        label_crop = normalized_label.split("___")[0]
+                        db_crop = normalized_db_key.split("___")[0]
+
+                        if label_crop == db_crop:
+                            return value
+
+    # -----------------------------------------------------
+    # 6. No database match
+    # Let generic information handle it
+    # -----------------------------------------------------
 
     return None
-
 
 # =========================================================
 # GENERIC DISEASE INFORMATION
 # =========================================================
+def create_generic_disease_info(
+    label: str
+):
+    """
+    Create user-friendly generic information
+    directly from the AI model label.
+    """
 
-def create_generic_disease_info(label: str):
+    if not label:
+        label = "Unknown"
 
-    label_text = label.replace("_", " ")
+    # -----------------------------------------------------
+    # Convert AI label into readable text
+    # -----------------------------------------------------
+
+    clean_label = label.replace(
+        "___",
+        " | "
+    )
+
+    clean_label = clean_label.replace(
+        "_",
+        " "
+    )
+
+    # -----------------------------------------------------
+    # Extract crop and disease
+    # -----------------------------------------------------
+
+    parts = clean_label.split("|")
+
+    if len(parts) >= 2:
+
+        crop_name = parts[0].strip()
+
+        disease_name = "|".join(
+            parts[1:]
+        ).strip()
+
+    else:
+
+        crop_name = "Unknown crop"
+
+        disease_name = clean_label.strip()
+
+    # -----------------------------------------------------
+    # Make crop name user friendly
+    # -----------------------------------------------------
+
+    crop_display_names = {
+
+        "Corn (maize)":
+            "ಮೆಕ್ಕೆಜೋಳ (Corn)",
+
+        "Tomato":
+            "ಟೊಮ್ಯಾಟೊ (Tomato)",
+
+        "Potato":
+            "ಆಲೂಗಡ್ಡೆ (Potato)",
+
+        "Soybean":
+            "ಸೋಯಾಬೀನ್ (Soybean)",
+
+        "Apple":
+            "ಸೇಬು (Apple)",
+
+        "Grape":
+            "ದ್ರಾಕ್ಷಿ (Grape)",
+
+        "Peach":
+            "ಪೀಚ್ (Peach)",
+
+        "Cherry (including sour)":
+            "ಚೆರ್ರಿ (Cherry)",
+
+        "Pepper, bell":
+            "ಕ್ಯಾಪ್ಸಿಕಂ (Bell Pepper)",
+
+        "Blueberry":
+            "ಬ್ಲೂಬೆರ್ರಿ (Blueberry)",
+
+        "Raspberry":
+            "ರಾಸ್ಪ್ಬೆರಿ (Raspberry)",
+
+        "Squash":
+            "ಸ್ಕ್ವಾಶ್ (Squash)",
+
+        "Strawberry":
+            "ಸ್ಟ್ರಾಬೆರಿ (Strawberry)"
+    }
+
+    crop_name = crop_display_names.get(
+        crop_name,
+        crop_name
+    )
+
+    # -----------------------------------------------------
+    # Healthy result
+    # -----------------------------------------------------
+
+    if (
+        "healthy"
+        in disease_name.lower()
+    ):
+
+        disease_display = (
+            "ಆರೋಗ್ಯಕರ / Healthy"
+        )
+
+        summary = (
+            "AI ಚಿತ್ರ ವಿಶ್ಲೇಷಣೆಯ ಪ್ರಕಾರ "
+            "ಈ ಬೆಳೆಯಲ್ಲಿ ಪ್ರಮುಖ ರೋಗದ ಲಕ್ಷಣಗಳು "
+            "ಕಾಣಿಸದಿರುವ ಸಾಧ್ಯತೆ ಇದೆ."
+        )
+
+        do_list = [
+
+            "ಬೆಳೆಯನ್ನು ನಿಯಮಿತವಾಗಿ ಪರಿಶೀಲಿಸಿ.",
+
+            "ಎಲೆಗಳ ಬಣ್ಣ ಮತ್ತು ಬೆಳವಣಿಗೆಯನ್ನು ಗಮನಿಸಿ.",
+
+            "ನೀರಾವರಿ ಮತ್ತು ಗೊಬ್ಬರವನ್ನು "
+            "ಅಗತ್ಯಕ್ಕೆ ಅನುಗುಣವಾಗಿ ನೀಡಿ."
+        ]
+
+        dont_list = [
+
+            "ಅಗತ್ಯವಿಲ್ಲದೆ pesticide ಅಥವಾ "
+            "ಔಷಧಿ ಬಳಸಬೇಡಿ.",
+
+            "AI result ಅನ್ನು ಮಾತ್ರ ಆಧರಿಸಿ "
+            "ಖಚಿತ diagnosis ಎಂದು ಪರಿಗಣಿಸಬೇಡಿ."
+        ]
+
+    else:
+
+        # -------------------------------------------------
+        # Disease result
+        # -------------------------------------------------
+
+        disease_display = disease_name
+
+        summary = (
+            "AI ಚಿತ್ರ ವಿಶ್ಲೇಷಣೆಯ ಆಧಾರದ ಮೇಲೆ "
+            "ಈ ಸಮಸ್ಯೆ ಗುರುತಿಸಲಾಗಿದೆ. "
+            "ಆದರೆ AI result ಅನ್ನು ಖಚಿತ "
+            "ರೋಗನಿರ್ಣಯ ಎಂದು ಪರಿಗಣಿಸಬಾರದು."
+        )
+
+        do_list = [
+
+            "ಪೀಡಿತ ಬೆಳೆಯ ಸ್ಪಷ್ಟವಾದ photo "
+            "ತೆಗೆದು ಮತ್ತೆ ಪರಿಶೀಲಿಸಿ.",
+
+            "ಬೆಳೆಯ ಲಕ್ಷಣಗಳನ್ನು ನಿಯಮಿತವಾಗಿ ಗಮನಿಸಿ.",
+
+            "ಸಮಸ್ಯೆ ಹೆಚ್ಚಾದರೆ ಸ್ಥಳೀಯ ಕೃಷಿ "
+            "ತಜ್ಞರ ಸಲಹೆ ಪಡೆಯಿರಿ."
+        ]
+
+        dont_list = [
+
+            "AI result ಮಾತ್ರ ಆಧರಿಸಿ "
+            "pesticide ಅಥವಾ ಔಷಧಿ ಬಳಸಬೇಡಿ.",
+
+            "Confidence ಕಡಿಮೆ ಇದ್ದಾಗ result ಅನ್ನು "
+            "ಖಚಿತ diagnosis ಎಂದು ಪರಿಗಣಿಸಬೇಡಿ.",
+
+            "ರೋಗ ಖಚಿತವಾಗದೆ ದುಬಾರಿ treatment "
+            "ಆರಂಭಿಸಬೇಡಿ."
+        ]
+
+    # -----------------------------------------------------
+    # FINAL INFORMATION
+    # -----------------------------------------------------
+
+    return {
+
+        "crop": crop_name,
+
+        "disease": disease_display,
+
+        "summary": summary,
+
+        "do": do_list,
+
+        "dont": dont_list
+    }
+    label_text = label.replace(
+        "_",
+        " "
+    )
 
     return {
         "crop": "AI ಮೂಲಕ ಗುರುತಿಸಲಾದ ಬೆಳೆ",
+
         "disease": label_text,
+
         "summary": (
             "AI ಚಿತ್ರ ವಿಶ್ಲೇಷಣೆಯ ಆಧಾರದ ಮೇಲೆ ಈ ಸಮಸ್ಯೆ "
             "ಗುರುತಿಸಲಾಗಿದೆ. ಆದರೆ AI result ಅನ್ನು ಖಚಿತ "
@@ -507,9 +1163,6 @@ async def upload_image(
     file: UploadFile = File(...)
 ):
 
-    from PIL import Image
-    import io
-
     try:
 
         # -------------------------------------------------
@@ -525,8 +1178,10 @@ async def upload_image(
                 "filename": file.filename,
                 "crop_or_disease": "Unknown",
                 "confidence": 0.0,
-                "disease_info": create_generic_disease_info(
-                    "Unknown"
+                "disease_info": (
+                    create_generic_disease_info(
+                        "Unknown"
+                    )
                 ),
                 "all_predictions": []
             }
@@ -536,25 +1191,32 @@ async def upload_image(
         # -------------------------------------------------
 
         image = Image.open(
-            io.BytesIO(image_bytes)
+            io.BytesIO(
+                image_bytes
+            )
         ).convert("RGB")
 
         # -------------------------------------------------
         # AI PREDICTION
         # -------------------------------------------------
 
-        classifier = get_image_classifier()
+        predictions = predict_crop_disease(
+            image
+        )
 
-        predictions = classifier(image)
         if not predictions:
 
             return {
-                "message": "AI could not analyze the image.",
+                "message": (
+                    "AI could not analyze the image."
+                ),
                 "filename": file.filename,
                 "crop_or_disease": "Unknown",
                 "confidence": 0.0,
-                "disease_info": create_generic_disease_info(
-                    "Unknown"
+                "disease_info": (
+                    create_generic_disease_info(
+                        "Unknown"
+                    )
                 ),
                 "all_predictions": []
             }
@@ -594,8 +1256,10 @@ async def upload_image(
 
         if disease_info is None:
 
-            disease_info = create_generic_disease_info(
-                label
+            disease_info = (
+                create_generic_disease_info(
+                    label
+                )
             )
 
         # -------------------------------------------------
@@ -603,7 +1267,10 @@ async def upload_image(
         # -------------------------------------------------
 
         return {
-            "message": "Image analyzed successfully!",
+            "message": (
+                "Image analyzed successfully!"
+            ),
+
             "filename": file.filename,
 
             "crop_or_disease": label,
@@ -623,52 +1290,119 @@ async def upload_image(
 
         return {
             "message": "Image analysis failed.",
+
             "filename": file.filename,
 
             "crop_or_disease": "Unknown",
 
             "confidence": 0.0,
 
-            "disease_info": create_generic_disease_info(
-                "Unknown"
+            "disease_info": (
+                create_generic_disease_info(
+                    "Unknown"
+                )
             ),
 
             "all_predictions": []
         }
-   # =========================================================
+
+
+# =========================================================
 # GOVERNMENT SCHEMES
 # =========================================================
 
 GOVERNMENT_SCHEMES = [
+
     {
         "id": 1,
+
         "title": "PM-KISAN",
-        "title_kn": "ಪ್ರಧಾನಮಂತ್ರಿ ಕಿಸಾನ್ ಸಮ್ಮಾನ್ ನಿಧಿ",
-        "description": "ಅರ್ಹ ರೈತ ಕುಟುಂಬಗಳಿಗೆ ಕೇಂದ್ರ ಸರ್ಕಾರದ ಆದಾಯ ಸಹಾಯ ಯೋಜನೆ.",
-        "benefit": "ಅರ್ಹ ರೈತರಿಗೆ ವರ್ಷಕ್ಕೆ ₹6,000 ನೇರವಾಗಿ ಬ್ಯಾಂಕ್ ಖಾತೆಗೆ.",
-        "eligibility": "ಅರ್ಹ ಭೂಮಾಲೀಕ ರೈತ ಕುಟುಂಬಗಳು.",
+
+        "title_kn": (
+            "ಪ್ರಧಾನಮಂತ್ರಿ ಕಿಸಾನ್ ಸಮ್ಮಾನ್ ನಿಧಿ"
+        ),
+
+        "description": (
+            "ಅರ್ಹ ರೈತ ಕುಟುಂಬಗಳಿಗೆ ಕೇಂದ್ರ ಸರ್ಕಾರದ "
+            "ಆದಾಯ ಸಹಾಯ ಯೋಜನೆ."
+        ),
+
+        "benefit": (
+            "ಅರ್ಹ ರೈತರಿಗೆ ವರ್ಷಕ್ಕೆ ₹6,000 "
+            "ನೇರವಾಗಿ ಬ್ಯಾಂಕ್ ಖಾತೆಗೆ."
+        ),
+
+        "eligibility": (
+            "ಅರ್ಹ ಭೂಮಾಲೀಕ ರೈತ ಕುಟುಂಬಗಳು."
+        ),
+
         "category": "Financial Support",
-        "official_url": "https://pmkisan.gov.in/"
+
+        "official_url": (
+            "https://pmkisan.gov.in/"
+        )
     },
+
     {
         "id": 2,
-        "title": "Pradhan Mantri Fasal Bima Yojana",
-        "title_kn": "ಪ್ರಧಾನಮಂತ್ರಿ ಫಸಲ್ ಬಿಮಾ ಯೋಜನೆ",
-        "description": "ಬೆಳೆ ಹಾನಿಯಿಂದ ರೈತರಿಗೆ ವಿಮಾ ರಕ್ಷಣೆ ನೀಡುವ ಯೋಜನೆ.",
-        "benefit": "ಅರ್ಹ ಬೆಳೆ ನಷ್ಟಗಳಿಗೆ ವಿಮಾ ಪರಿಹಾರ ಪಡೆಯಲು ಅವಕಾಶ.",
-        "eligibility": "ಯೋಜನೆಯ ನಿಯಮಗಳಿಗೆ ಒಳಪಡುವ ರೈತರು.",
+
+        "title": (
+            "Pradhan Mantri Fasal Bima Yojana"
+        ),
+
+        "title_kn": (
+            "ಪ್ರಧಾನಮಂತ್ರಿ ಫಸಲ್ ಬಿಮಾ ಯೋಜನೆ"
+        ),
+
+        "description": (
+            "ಬೆಳೆ ಹಾನಿಯಿಂದ ರೈತರಿಗೆ ವಿಮಾ ರಕ್ಷಣೆ "
+            "ನೀಡುವ ಯೋಜನೆ."
+        ),
+
+        "benefit": (
+            "ಅರ್ಹ ಬೆಳೆ ನಷ್ಟಗಳಿಗೆ ವಿಮಾ ಪರಿಹಾರ "
+            "ಪಡೆಯಲು ಅವಕಾಶ."
+        ),
+
+        "eligibility": (
+            "ಯೋಜನೆಯ ನಿಯಮಗಳಿಗೆ ಒಳಪಡುವ ರೈತರು."
+        ),
+
         "category": "Crop Insurance",
-        "official_url": "https://pmfby.gov.in/"
+
+        "official_url": (
+            "https://pmfby.gov.in/"
+        )
     },
+
     {
         "id": 3,
+
         "title": "Kisan Credit Card",
-        "title_kn": "ಕಿಸಾನ್ ಕ್ರೆಡಿಟ್ ಕಾರ್ಡ್",
-        "description": "ಕೃಷಿ ಚಟುವಟಿಕೆಗಳಿಗೆ ಸಾಲ ಸೌಲಭ್ಯ ಪಡೆಯಲು ಸಹಾಯ ಮಾಡುವ ಯೋಜನೆ.",
-        "benefit": "ಕೃಷಿ ಅಗತ್ಯಗಳಿಗೆ ಸಾಲ ಸೌಲಭ್ಯ.",
-        "eligibility": "ಅರ್ಹ ರೈತರು ಮತ್ತು ಕೃಷಿ ಚಟುವಟಿಕೆಯಲ್ಲಿ ತೊಡಗಿರುವವರು.",
+
+        "title_kn": (
+            "ಕಿಸಾನ್ ಕ್ರೆಡಿಟ್ ಕಾರ್ಡ್"
+        ),
+
+        "description": (
+            "ಕೃಷಿ ಚಟುವಟಿಕೆಗಳಿಗೆ ಸಾಲ ಸೌಲಭ್ಯ "
+            "ಪಡೆಯಲು ಸಹಾಯ ಮಾಡುವ ಯೋಜನೆ."
+        ),
+
+        "benefit": (
+            "ಕೃಷಿ ಅಗತ್ಯಗಳಿಗೆ ಸಾಲ ಸೌಲಭ್ಯ."
+        ),
+
+        "eligibility": (
+            "ಅರ್ಹ ರೈತರು ಮತ್ತು ಕೃಷಿ ಚಟುವಟಿಕೆಯಲ್ಲಿ "
+            "ತೊಡಗಿರುವವರು."
+        ),
+
         "category": "Agricultural Credit",
-        "official_url": "https://www.myscheme.gov.in/schemes/kcc"
+
+        "official_url": (
+            "https://www.myscheme.gov.in/schemes/kcc"
+        )
     }
 ]
 
@@ -677,10 +1411,17 @@ GOVERNMENT_SCHEMES = [
 def get_government_schemes():
 
     return {
-        "message": "Government schemes loaded successfully",
-        "count": len(GOVERNMENT_SCHEMES),
+        "message": (
+            "Government schemes loaded successfully"
+        ),
+
+        "count": len(
+            GOVERNMENT_SCHEMES
+        ),
+
         "schemes": GOVERNMENT_SCHEMES
     }
+
 
 # =========================================================
 # AGRICULTURE MEDICINES
@@ -689,49 +1430,91 @@ def get_government_schemes():
 @app.get("/medicines")
 def get_medicines():
 
+    medicines = get_all_medicines()
+
     return {
-        "message": "Agriculture medicines loaded successfully",
-        "count": len(get_all_medicines()),
-        "medicines": get_all_medicines()
+        "message": (
+            "Agriculture medicines loaded successfully"
+        ),
+
+        "count": len(
+            medicines
+        ),
+
+        "medicines": medicines
     }
 
 
 @app.get("/medicines/{medicine_id}")
-def get_medicine(medicine_id: int):
+def get_medicine(
+    medicine_id: int
+):
 
-    medicine = get_medicine_by_id(medicine_id)
+    medicine = get_medicine_by_id(
+        medicine_id
+    )
 
     if medicine is None:
 
         return {
-            "message": "Medicine information not found.",
+            "message": (
+                "Medicine information not found."
+            ),
+
             "medicine": None
         }
 
     return {
-        "message": "Medicine information loaded successfully",
+        "message": (
+            "Medicine information loaded successfully"
+        ),
+
         "medicine": medicine
     }
+
 
 # =========================================================
 # FARMER GOVERNMENT NOTIFICATIONS
 # =========================================================
 
 GOVERNMENT_NOTIFICATIONS = [
+
     {
         "id": 1,
-        "title": "ಹೊಸ ರೈತ ಯೋಜನೆ ಮಾಹಿತಿ",
-        "message": "ರೈತರಿಗೆ ಲಭ್ಯವಿರುವ ಸರ್ಕಾರಿ ಯೋಜನೆಗಳ ಮಾಹಿತಿಗಾಗಿ KrushiVaani ಪರಿಶೀಲಿಸಿ.",
+
+        "title": (
+            "ಹೊಸ ರೈತ ಯೋಜನೆ ಮಾಹಿತಿ"
+        ),
+
+        "message": (
+            "ರೈತರಿಗೆ ಲಭ್ಯವಿರುವ ಸರ್ಕಾರಿ ಯೋಜನೆಗಳ "
+            "ಮಾಹಿತಿಗಾಗಿ KrushiVaani ಪರಿಶೀಲಿಸಿ."
+        ),
+
         "category": "Government Scheme",
+
         "date": "2026-10-04",
+
         "is_new": True
     },
+
     {
         "id": 2,
-        "title": "ಬೆಳೆ ವಿಮೆ ಮಾಹಿತಿ",
-        "message": "ಬೆಳೆ ಹಾನಿಯಿಂದ ರಕ್ಷಣೆ ಪಡೆಯಲು ಪ್ರಧಾನಮಂತ್ರಿ ಫಸಲ್ ಬಿಮಾ ಯೋಜನೆಯ ವಿವರಗಳನ್ನು ಪರಿಶೀಲಿಸಿ.",
+
+        "title": (
+            "ಬೆಳೆ ವಿಮೆ ಮಾಹಿತಿ"
+        ),
+
+        "message": (
+            "ಬೆಳೆ ಹಾನಿಯಿಂದ ರಕ್ಷಣೆ ಪಡೆಯಲು "
+            "ಪ್ರಧಾನಮಂತ್ರಿ ಫಸಲ್ ಬಿಮಾ ಯೋಜನೆಯ "
+            "ವಿವರಗಳನ್ನು ಪರಿಶೀಲಿಸಿ."
+        ),
+
         "category": "Crop Insurance",
+
         "date": "2026-10-04",
+
         "is_new": True
     }
 ]
@@ -739,8 +1522,17 @@ GOVERNMENT_NOTIFICATIONS = [
 
 @app.get("/notifications")
 def get_notifications():
+
     return {
-        "message": "Farmer notifications loaded successfully",
-        "count": len(GOVERNMENT_NOTIFICATIONS),
-        "notifications": GOVERNMENT_NOTIFICATIONS
+        "message": (
+            "Farmer notifications loaded successfully"
+        ),
+
+        "count": len(
+            GOVERNMENT_NOTIFICATIONS
+        ),
+
+        "notifications": (
+            GOVERNMENT_NOTIFICATIONS
+        )
     }

@@ -52,3 +52,8 @@ main_backup*
 backend/*jpeg
 
 /android/build/
+
+# KrushiVaani AI local model and test files
+backend/ai_model/
+backend/test_leaf.jpg
+backend/ai_test.py
