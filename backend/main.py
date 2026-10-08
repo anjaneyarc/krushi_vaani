@@ -471,10 +471,149 @@ class ProblemRequest(BaseModel):
 # CLASSIFY FARMER PROBLEM
 # =========================================================
 
+# =========================================================
+# CLASSIFY FARMER PROBLEM
+# =========================================================
+
 def classify_problem(problem: str):
 
-    text = problem.lower()
+    text = problem.lower().strip()
 
+    # -----------------------------------------------------
+    # TRACTOR SERVICE / REPAIR
+    # -----------------------------------------------------
+    tractor_service_words = [
+        "tractor",
+        "ಟ್ರ್ಯಾಕ್ಟರ್",
+        "ಟ್ರಾಕ್ಟರ್",
+        "tractor service",
+        "tractor repair",
+        "ಟ್ರ್ಯಾಕ್ಟರ್ ಸರ್ವಿಸ್",
+        "ಟ್ರ್ಯಾಕ್ಟರ್ ರಿಪೇರಿ",
+        "ಟ್ರ್ಯಾಕ್ಟರ್ ಕೆಲಸ ಮಾಡುತ್ತಿಲ್ಲ",
+        "ಟ್ರ್ಯಾಕ್ಟರ್ ಕೆಟ್ಟು",
+        "ಟ್ರ್ಯಾಕ್ಟರ್ ಕೆಟ್ಟಿದೆ"
+    ]
+
+    # -----------------------------------------------------
+    # FARM MACHINERY SERVICE / REPAIR
+    # -----------------------------------------------------
+    machinery_service_words = [
+        "sprayer",
+        "ಸ್ಪ್ರೇಯರ್",
+        "plough",
+        "ploughing machine",
+        "ನೇಗಿಲು",
+        "ರೋಟಾವೇಟರ್",
+        "rotavator",
+        "cultivator",
+        "ಕಲ್ಟಿವೇಟರ್",
+        "harvester",
+        "ಹಾರ್ವೆಸ್ಟರ್",
+        "farm machine",
+        "farm machinery",
+        "ಕೃಷಿ ಯಂತ್ರ",
+        "ಕೃಷಿ ಯಂತ್ರೋಪಕರಣ",
+        "machine repair",
+        "ಯಂತ್ರ ರಿಪೇರಿ",
+        "ಯಂತ್ರ ಕೆಟ್ಟಿದೆ",
+        "ಯಂತ್ರ ಕೆಲಸ ಮಾಡುತ್ತಿಲ್ಲ"
+    ]
+
+    # -----------------------------------------------------
+    # PUMP / MOTOR SERVICE
+    # -----------------------------------------------------
+    pump_motor_service_words = [
+        "pump",
+        "motor",
+        "water pump",
+        "farm motor",
+        "ಪಂಪ್",
+        "ಮೋಟಾರ್",
+        "ನೀರಿನ ಪಂಪ್",
+        "ನೀರಿನ ಮೋಟಾರ್",
+        "ಕೃಷಿ ಮೋಟಾರ್",
+        "ಮೋಟಾರ್ ಕೆಟ್ಟಿದೆ",
+        "ಮೋಟಾರ್ ಕೆಲಸ ಮಾಡುತ್ತಿಲ್ಲ",
+        "ಪಂಪ್ ಕೆಟ್ಟಿದೆ",
+        "ಪಂಪ್ ಕೆಲಸ ಮಾಡುತ್ತಿಲ್ಲ"
+    ]
+
+    # -----------------------------------------------------
+    # SEED / SEED SHOP HELP
+    # -----------------------------------------------------
+    seed_service_words = [
+        "seed",
+        "seeds",
+        "ಬೀಜ",
+        "ಬೀಜಗಳು",
+        "ಬೀಜ ಬೇಕು",
+        "ಬೀಜ ಖರೀದಿ",
+        "ಬೀಜ ಅಂಗಡಿ",
+        "seed shop",
+        "seed service"
+    ]
+
+    # -----------------------------------------------------
+    # AGRICULTURE SHOP / INPUT SERVICE
+    # -----------------------------------------------------
+    agri_shop_service_words = [
+        "agri shop",
+        "agriculture shop",
+        "ಕೃಷಿ ಅಂಗಡಿ",
+        "ಕೃಷಿ ಮಳಿಗೆ",
+        "ಗೊಬ್ಬರ ಅಂಗಡಿ",
+        "ಔಷಧಿ ಅಂಗಡಿ",
+        "pesticide shop",
+        "fertilizer shop",
+        "ಕೀಟನಾಶಕ ಅಂಗಡಿ",
+        "ಕೃಷಿ ಸಾಮಗ್ರಿ",
+        "ಕೃಷಿ ಸಾಮಾನು"
+    ]
+
+    # -----------------------------------------------------
+    # VETERINARY SERVICE
+    # -----------------------------------------------------
+    veterinary_service_words = [
+        "veterinary",
+        "vet",
+        "animal doctor",
+        "cow doctor",
+        "cattle doctor",
+        "ಪಶು ವೈದ್ಯ",
+        "ಪಶು ವೈದ್ಯರು",
+        "ಜಾನುವಾರು ವೈದ್ಯ",
+        "ಹಸು ವೈದ್ಯ",
+        "ಹಸುಗೆ ಚಿಕಿತ್ಸೆ",
+        "ಜಾನುವಾರು ಚಿಕಿತ್ಸೆ",
+        "ಕುರಿ ಚಿಕಿತ್ಸೆ",
+        "ಮೇಕೆ ಚಿಕಿತ್ಸೆ"
+    ]
+
+    # -----------------------------------------------------
+    # GENERAL FARM SERVICE
+    # -----------------------------------------------------
+    general_service_words = [
+        "service ಬೇಕು",
+        "service ಬೇಕಾಗಿದೆ",
+        "ಸರ್ವಿಸ್ ಬೇಕು",
+        "ಸರ್ವಿಸ್ ಬೇಕಾಗಿದೆ",
+        "repair ಬೇಕು",
+        "repair ಮಾಡಬೇಕು",
+        "ರಿಪೇರಿ ಬೇಕು",
+        "ರಿಪೇರಿ ಮಾಡಬೇಕು",
+        "ರಿಪೇರಿ ಮಾಡಿಸಬೇಕು",
+        "ಕೆಟ್ಟುಹೋಗಿದೆ",
+        "ಕೆಟ್ಟಿದೆ",
+        "ಕೆಲಸ ಮಾಡುತ್ತಿಲ್ಲ",
+        "work ಮಾಡುತ್ತಿಲ್ಲ",
+        "technician ಬೇಕು",
+        "ಟೆಕ್ನಿಷಿಯನ್ ಬೇಕು"
+    ]
+
+    # -----------------------------------------------------
+    # EXISTING FARM PROBLEM WORDS
+    # -----------------------------------------------------
     pest_words = [
         "ಕೀಟ",
         "ಹುಳು",
@@ -520,51 +659,323 @@ def classify_problem(problem: str):
         "fertilizer"
     ]
 
-    if any(
-        word in text
-        for word in pest_words
-    ):
+    # =====================================================
+    # SERVICE CLASSIFICATION FIRST
+    # =====================================================
 
+    if any(word in text for word in tractor_service_words):
+        return "tractor_service"
+
+    elif any(word in text for word in pump_motor_service_words):
+        return "pump_motor_service"
+
+    elif any(word in text for word in machinery_service_words):
+        return "farm_machinery_service"
+
+    elif any(word in text for word in seed_service_words):
+        return "seed_service"
+
+    elif any(word in text for word in agri_shop_service_words):
+        return "agri_shop_service"
+
+    elif any(word in text for word in veterinary_service_words):
+        return "veterinary_service"
+
+    elif any(word in text for word in general_service_words):
+        return "general_service"
+
+    # =====================================================
+    # EXISTING FARM PROBLEM CLASSIFICATION
+    # =====================================================
+
+    elif any(word in text for word in pest_words):
         return "pest"
 
-    elif any(
-        word in text
-        for word in water_words
-    ):
-
+    elif any(word in text for word in water_words):
         return "water"
 
-    elif any(
-        word in text
-        for word in leaf_words
-    ):
-
+    elif any(word in text for word in leaf_words):
         return "leaf"
 
-    elif any(
-        word in text
-        for word in disease_words
-    ):
-
+    elif any(word in text for word in disease_words):
         return "disease"
 
-    elif any(
-        word in text
-        for word in fertilizer_words
-    ):
-
+    elif any(word in text for word in fertilizer_words):
         return "fertilizer"
 
     return "unknown"
-
-
 # =========================================================
 # FARMER RESPONSE
 # =========================================================
 
 def generate_farmer_response(category):
 
-    if category == "pest":
+    # =====================================================
+    # TRACTOR SERVICE
+    # =====================================================
+
+    if category == "tractor_service":
+
+        return {
+            "answer": (
+                "ನಿಮ್ಮ ಟ್ರ್ಯಾಕ್ಟರ್‌ಗೆ service ಅಥವಾ repair ಅಗತ್ಯವಿರುವಂತೆ ಕಾಣುತ್ತಿದೆ. "
+                "ಮೊದಲು ಸಮಸ್ಯೆ ಯಾವ ಭಾಗದಲ್ಲಿದೆ ಎಂದು ಗುರುತಿಸುವುದು ಮುಖ್ಯ."
+            ),
+
+            "main_advice": [
+                "ಟ್ರ್ಯಾಕ್ಟರ್ start ಆಗುತ್ತಿದೆಯೇ ಎಂದು ಪರಿಶೀಲಿಸಿ.",
+                "Engine oil ಮತ್ತು coolant level ಪರಿಶೀಲಿಸಿ.",
+                "Battery ಮತ್ತು battery connection ಪರಿಶೀಲಿಸಿ.",
+                "Tyre pressure ಮತ್ತು tyre condition ಪರಿಶೀಲಿಸಿ.",
+                "ಅಸಾಮಾನ್ಯ ಶಬ್ದ ಅಥವಾ smoke ಬರುತ್ತಿದೆಯೇ ಎಂದು ಗಮನಿಸಿ."
+            ],
+
+            "do": [
+                "ಟ್ರ್ಯಾಕ್ಟರ್‌ನ ಸಮಸ್ಯೆಯನ್ನು ಗಮನಿಸಿ.",
+                "ಸಮಸ್ಯೆ ಯಾವಾಗ ಪ್ರಾರಂಭವಾಯಿತು ಎಂದು ನೆನಪಿಡಿ.",
+                "Regular service schedule ಅನ್ನು ಪರಿಶೀಲಿಸಿ.",
+                "ಅಗತ್ಯವಿದ್ದರೆ authorized mechanic ಅಥವಾ qualified technician ಅನ್ನು ಸಂಪರ್ಕಿಸಿ."
+            ],
+
+            "dont": [
+                "ತಿಳುವಳಿಕೆ ಇಲ್ಲದೆ engine ಅಥವಾ electrical parts ತೆರೆಯಬೇಡಿ.",
+                "ಅಸಾಮಾನ್ಯ ಶಬ್ದ ಬಂದರೆ tractor ಅನ್ನು ಬಲವಂತವಾಗಿ ಓಡಿಸಬೇಡಿ.",
+                "ತಜ್ಞರ ಸಲಹೆ ಇಲ್ಲದೆ engine oil ಅಥವಾ spare parts ಬದಲಾಯಿಸಬೇಡಿ."
+            ],
+
+            "next_step": (
+                "ಮುಂದಿನ ಹಂತ: ನಿಮ್ಮ ಟ್ರ್ಯಾಕ್ಟರ್‌ನಲ್ಲಿ ಏನು ಸಮಸ್ಯೆ ಇದೆ ಎಂದು ತಿಳಿಸಿ. "
+                "ಉದಾಹರಣೆಗೆ: start ಆಗುತ್ತಿಲ್ಲ, battery problem, engine problem, "
+                "brake problem ಅಥವಾ service ಬೇಕು ಎಂದು ಹೇಳಬಹುದು."
+            )
+        }
+
+    # =====================================================
+    # PUMP / MOTOR SERVICE
+    # =====================================================
+
+    elif category == "pump_motor_service":
+
+        return {
+            "answer": (
+                "ನಿಮ್ಮ ಕೃಷಿ ನೀರಿನ pump ಅಥವಾ motor ನಲ್ಲಿ service/repair ಅಗತ್ಯವಿರುವಂತೆ ಕಾಣುತ್ತಿದೆ."
+            ),
+
+            "main_advice": [
+                "Motor start ಆಗುತ್ತಿದೆಯೇ ಎಂದು ಪರಿಶೀಲಿಸಿ.",
+                "Power supply ಇದೆಯೇ ಎಂದು ಪರಿಶೀಲಿಸಿ.",
+                "Switch, cable ಮತ್ತು connection ಅನ್ನು ಗಮನಿಸಿ.",
+                "Motor unusual sound ಮಾಡುತ್ತಿದೆಯೇ ಎಂದು ಪರಿಶೀಲಿಸಿ.",
+                "Water flow ಸರಿಯಾಗಿ ಬರುತ್ತಿದೆಯೇ ಎಂದು ಗಮನಿಸಿ."
+            ],
+
+            "do": [
+                "Power supply ಅನ್ನು ಸುರಕ್ಷಿತವಾಗಿ ಪರಿಶೀಲಿಸಿ.",
+                "Motor ಸಮಸ್ಯೆ ಯಾವಾಗ ಪ್ರಾರಂಭವಾಯಿತು ಎಂದು ಗಮನಿಸಿ.",
+                "Qualified electrician ಅಥವಾ technician ಅನ್ನು ಸಂಪರ್ಕಿಸಿ."
+            ],
+
+            "dont": [
+                "Power ON ಇರುವಾಗ electrical connection touch ಮಾಡಬೇಡಿ.",
+                "ತಿಳುವಳಿಕೆ ಇಲ್ಲದೆ motor ತೆರೆಯಬೇಡಿ.",
+                "Electrical problem ಇದ್ದಾಗ ಸ್ವತಃ repair ಮಾಡಲು ಪ್ರಯತ್ನಿಸಬೇಡಿ."
+            ],
+
+            "next_step": (
+                "ಮುಂದಿನ ಹಂತ: motor/pump ನಲ್ಲಿ ಯಾವ ಸಮಸ್ಯೆ ಇದೆ ಎಂದು ತಿಳಿಸಿ. "
+                "ಉದಾಹರಣೆಗೆ: motor start ಆಗುತ್ತಿಲ್ಲ, water ಬರುತ್ತಿಲ್ಲ ಅಥವಾ "
+                "motor sound ಮಾಡುತ್ತಿದೆ ಎಂದು ಹೇಳಬಹುದು."
+            )
+        }
+
+    # =====================================================
+    # FARM MACHINERY SERVICE
+    # =====================================================
+
+    elif category == "farm_machinery_service":
+
+        return {
+            "answer": (
+                "ನಿಮ್ಮ ಕೃಷಿ ಯಂತ್ರೋಪಕರಣಕ್ಕೆ service ಅಥವಾ repair ಅಗತ್ಯವಿರುವಂತೆ ಕಾಣುತ್ತಿದೆ."
+            ),
+
+            "main_advice": [
+                "ಯಂತ್ರದ ಸಮಸ್ಯೆ ಯಾವ ಭಾಗದಲ್ಲಿದೆ ಎಂದು ಪರಿಶೀಲಿಸಿ.",
+                "ಯಂತ್ರ start ಆಗುತ್ತಿದೆಯೇ ಎಂದು ಗಮನಿಸಿ.",
+                "ಯಂತ್ರದಲ್ಲಿ unusual sound ಅಥವಾ vibration ಇದೆಯೇ ಪರಿಶೀಲಿಸಿ.",
+                "Blade, belt ಮತ್ತು moving parts ಗಳ condition ಪರಿಶೀಲಿಸಿ.",
+                "Regular maintenance schedule ಅನ್ನು ಗಮನಿಸಿ."
+            ],
+
+            "do": [
+                "ಯಂತ್ರದ model ಮತ್ತು ಸಮಸ್ಯೆಯನ್ನು note ಮಾಡಿ.",
+                "ಯಂತ್ರವನ್ನು ಸ್ವಚ್ಛವಾಗಿ ಇಟ್ಟುಕೊಳ್ಳಿ.",
+                "ಅಗತ್ಯವಿದ್ದರೆ qualified technician ಅನ್ನು ಸಂಪರ್ಕಿಸಿ."
+            ],
+
+            "dont": [
+                "ಯಂತ್ರ running ಇರುವಾಗ moving parts touch ಮಾಡಬೇಡಿ.",
+                "Safety guard ತೆಗೆದು machine operate ಮಾಡಬೇಡಿ.",
+                "ತಿಳುವಳಿಕೆ ಇಲ್ಲದೆ machine repair ಮಾಡಬೇಡಿ."
+            ],
+
+            "next_step": (
+                "ಮುಂದಿನ ಹಂತ: ಯಾವ ಯಂತ್ರದಲ್ಲಿ ಸಮಸ್ಯೆ ಇದೆ ಮತ್ತು "
+                "ಏನು ಸಮಸ್ಯೆ ಆಗಿದೆ ಎಂದು ತಿಳಿಸಿ. "
+                "ಉದಾಹರಣೆಗೆ: sprayer ಕೆಲಸ ಮಾಡುತ್ತಿಲ್ಲ ಅಥವಾ rotavator repair ಬೇಕು."
+            )
+        }
+
+    # =====================================================
+    # SEED SERVICE
+    # =====================================================
+
+    elif category == "seed_service":
+
+        return {
+            "answer": (
+                "ನಿಮಗೆ ಬೀಜ ಖರೀದಿ ಅಥವಾ ಸೂಕ್ತವಾದ ಬೀಜದ ಬಗ್ಗೆ ಮಾಹಿತಿ ಬೇಕಾಗಿದೆ."
+            ),
+
+            "main_advice": [
+                "ಬೆಳೆಯ ಪ್ರಕಾರಕ್ಕೆ ಸೂಕ್ತವಾದ variety ಆಯ್ಕೆ ಮಾಡಿ.",
+                "Certified ಅಥವಾ ಉತ್ತಮ ಗುಣಮಟ್ಟದ ಬೀಜವನ್ನು ಆಯ್ಕೆ ಮಾಡಿ.",
+                "Seed packet ಮೇಲಿನ expiry ಮತ್ತು certification information ಪರಿಶೀಲಿಸಿ.",
+                "ನಿಮ್ಮ ಪ್ರದೇಶದ ಹವಾಮಾನ ಮತ್ತು ಮಣ್ಣಿಗೆ ಸೂಕ್ತವಾದ variety ಆಯ್ಕೆ ಮಾಡುವುದು ಉತ್ತಮ."
+            ],
+
+            "do": [
+                "ಬೆಳೆಯ ಹೆಸರನ್ನು ತಿಳಿಸಿ.",
+                "ನಿಮ್ಮ ಪ್ರದೇಶವನ್ನು ತಿಳಿಸಿ.",
+                "ಬೀಜ ಖರೀದಿಸುವ ಮೊದಲು label ಮತ್ತು quality information ಪರಿಶೀಲಿಸಿ.",
+                "ಅಧಿಕೃತ ಕೃಷಿ ಮಳಿಗೆ ಅಥವಾ ವಿಶ್ವಾಸಾರ್ಹ seller ಅನ್ನು ಆಯ್ಕೆ ಮಾಡಿ."
+            ],
+
+            "dont": [
+                "ಗುಣಮಟ್ಟ ತಿಳಿಯದ ಬೀಜವನ್ನು ಖರೀದಿಸಬೇಡಿ.",
+                "Expiry ಆಗಿರುವ seed ಬಳಸಬೇಡಿ.",
+                "ಬೆಳೆಯ ಪ್ರಕಾರ ತಿಳಿಯದೆ random variety ಆಯ್ಕೆ ಮಾಡಬೇಡಿ."
+            ],
+
+            "next_step": (
+                "ಮುಂದಿನ ಹಂತ: ಯಾವ ಬೆಳೆಗೆ ಬೀಜ ಬೇಕು ಎಂದು ತಿಳಿಸಿ. "
+                "ಉದಾಹರಣೆಗೆ: ಟೊಮೆಟೊ ಬೀಜ, ಅಕ್ಕಿ ಬೀಜ ಅಥವಾ ಮೆಣಸಿನಕಾಯಿ ಬೀಜ."
+            )
+        }
+
+    # =====================================================
+    # AGRICULTURE SHOP SERVICE
+    # =====================================================
+
+    elif category == "agri_shop_service":
+
+        return {
+            "answer": (
+                "ನಿಮಗೆ ಕೃಷಿ ಸಾಮಗ್ರಿ ಅಥವಾ ಕೃಷಿ ಮಳಿಗೆಗೆ ಸಂಬಂಧಿಸಿದ ಸಹಾಯ ಬೇಕಾಗಿದೆ."
+            ),
+
+            "main_advice": [
+                "ನಿಮಗೆ ಬೇಕಾದ ಕೃಷಿ ಸಾಮಗ್ರಿಯನ್ನು ಮೊದಲು ಗುರುತಿಸಿ.",
+                "Fertilizer, seed ಅಥವಾ pesticide ಬೇಕೇ ಎಂದು ಸ್ಪಷ್ಟಪಡಿಸಿ.",
+                "Product label ಮತ್ತು expiry information ಪರಿಶೀಲಿಸಿ.",
+                "ಅಗತ್ಯವಿದ್ದರೆ ಕೃಷಿ ಅಧಿಕಾರಿಯ ಸಲಹೆ ಪಡೆಯಿರಿ."
+            ],
+
+            "do": [
+                "ಬೇಕಾದ product ಹೆಸರನ್ನು ತಿಳಿಸಿ.",
+                "ಬೆಳೆಯ ಹೆಸರನ್ನು ತಿಳಿಸಿ.",
+                "ಅಧಿಕೃತ ಅಥವಾ ವಿಶ್ವಾಸಾರ್ಹ ಕೃಷಿ ಮಳಿಗೆಯಿಂದ ಖರೀದಿಸಿ."
+            ],
+
+            "dont": [
+                "Label ಇಲ್ಲದ ಕೃಷಿ ಉತ್ಪನ್ನ ಖರೀದಿಸಬೇಡಿ.",
+                "ಅಗತ್ಯವಿಲ್ಲದ pesticide ಅಥವಾ fertilizer ಖರೀದಿಸಬೇಡಿ.",
+                "ತಜ್ಞರ ಸಲಹೆ ಇಲ್ಲದೆ chemical ಬಳಸಬೇಡಿ."
+            ],
+
+            "next_step": (
+                "ಮುಂದಿನ ಹಂತ: ನಿಮಗೆ ಯಾವ ಕೃಷಿ ಸಾಮಗ್ರಿ ಬೇಕು ಎಂದು ತಿಳಿಸಿ. "
+                "ಉದಾಹರಣೆಗೆ: ಬೀಜ, ಗೊಬ್ಬರ, pesticide ಅಥವಾ ಕೃಷಿ ಉಪಕರಣ."
+            )
+        }
+
+    # =====================================================
+    # VETERINARY SERVICE
+    # =====================================================
+
+    elif category == "veterinary_service":
+
+        return {
+            "answer": (
+                "ನಿಮ್ಮ ಜಾನುವಾರಿಗೆ veterinary ಅಥವಾ animal health service ಅಗತ್ಯವಿರುವಂತೆ ಕಾಣುತ್ತಿದೆ."
+            ),
+
+            "main_advice": [
+                "ಜಾನುವಾರದ ಲಕ್ಷಣಗಳನ್ನು ಗಮನಿಸಿ.",
+                "ಆಹಾರ ಸೇವನೆ ಮತ್ತು ನೀರು ಕುಡಿಯುವ ಪ್ರಮಾಣವನ್ನು ಗಮನಿಸಿ.",
+                "ಜಾನುವಾರಕ್ಕೆ ಗಾಯ ಅಥವಾ ಅಸಾಮಾನ್ಯ ವರ್ತನೆ ಇದೆಯೇ ಪರಿಶೀಲಿಸಿ.",
+                "ಗಂಭೀರ ಲಕ್ಷಣಗಳಿದ್ದರೆ veterinary doctor ಅನ್ನು ಸಂಪರ್ಕಿಸಿ."
+            ],
+
+            "do": [
+                "ಜಾನುವಾರದ ಸಮಸ್ಯೆಯನ್ನು ಸ್ಪಷ್ಟವಾಗಿ ವಿವರಿಸಿ.",
+                "ಲಕ್ಷಣಗಳು ಯಾವಾಗ ಪ್ರಾರಂಭವಾದವು ಎಂದು ಗಮನಿಸಿ.",
+                "ಅಗತ್ಯವಿದ್ದರೆ veterinary doctor ಅನ್ನು ಸಂಪರ್ಕಿಸಿ."
+            ],
+
+            "dont": [
+                "ವೈದ್ಯರ ಸಲಹೆ ಇಲ್ಲದೆ medicine ನೀಡಬೇಡಿ.",
+                "ತಿಳುವಳಿಕೆ ಇಲ್ಲದೆ injection ನೀಡಬೇಡಿ.",
+                "ಗಂಭೀರ ಸ್ಥಿತಿಯಲ್ಲಿ ಚಿಕಿತ್ಸೆ ವಿಳಂಬ ಮಾಡಬೇಡಿ."
+            ],
+
+            "next_step": (
+                "ಮುಂದಿನ ಹಂತ: ಯಾವ ಜಾನುವಾರಿಗೆ ಏನು ಸಮಸ್ಯೆ ಇದೆ ಎಂದು ತಿಳಿಸಿ. "
+                "ಉದಾಹರಣೆಗೆ: ಹಸು ತಿನ್ನುತ್ತಿಲ್ಲ, ಮೇಕೆಗೆ ಗಾಯವಾಗಿದೆ ಅಥವಾ "
+                "ಜಾನುವಾರಿಗೆ ಜ್ವರದ ಲಕ್ಷಣಗಳಿವೆ."
+            )
+        }
+
+    # =====================================================
+    # GENERAL FARM SERVICE
+    # =====================================================
+
+    elif category == "general_service":
+
+        return {
+            "answer": (
+                "ನಿಮಗೆ ಕೃಷಿಗೆ ಸಂಬಂಧಿಸಿದ service ಅಥವಾ repair ಸಹಾಯ ಬೇಕಾಗಿದೆ."
+            ),
+
+            "main_advice": [
+                "ಯಾವ ವಸ್ತು ಅಥವಾ ಯಂತ್ರಕ್ಕೆ service ಬೇಕು ಎಂದು ಮೊದಲು ಗುರುತಿಸಿ.",
+                "ಸಮಸ್ಯೆಯ ಲಕ್ಷಣಗಳನ್ನು ಗಮನಿಸಿ.",
+                "ಅಗತ್ಯವಿದ್ದರೆ qualified technician ಅಥವಾ ಸಂಬಂಧಿತ service provider ಅನ್ನು ಸಂಪರ್ಕಿಸಿ."
+            ],
+
+            "do": [
+                "ಸಮಸ್ಯೆಯ ವಸ್ತುವಿನ ಹೆಸರು ತಿಳಿಸಿ.",
+                "ಸಮಸ್ಯೆ ಏನು ಎಂದು ವಿವರಿಸಿ.",
+                "ಸಾಧ್ಯವಾದರೆ ಸಮಸ್ಯೆಯ photo ತೆಗೆದುಕೊಳ್ಳಿ."
+            ],
+
+            "dont": [
+                "ತಿಳುವಳಿಕೆ ಇಲ್ಲದೆ machine ಅಥವಾ electrical equipment ತೆರೆಯಬೇಡಿ.",
+                "ಅಗತ್ಯವಿಲ್ಲದೆ parts ಬದಲಾಯಿಸಬೇಡಿ.",
+                "ಗಂಭೀರ ಸಮಸ್ಯೆಯನ್ನು ನಿರ್ಲಕ್ಷಿಸಬೇಡಿ."
+            ],
+
+            "next_step": (
+                "ಮುಂದಿನ ಹಂತ: ಯಾವ ವಸ್ತು ಅಥವಾ ಯಂತ್ರಕ್ಕೆ service ಬೇಕು "
+                "ಮತ್ತು ಏನು ಸಮಸ್ಯೆ ಇದೆ ಎಂದು ವಿವರವಾಗಿ ಹೇಳಿ."
+            )
+        }
+
+    # =====================================================
+    # EXISTING PEST
+    # =====================================================
+
+    elif category == "pest":
 
         return {
             "answer": (
@@ -601,6 +1012,10 @@ def generate_farmer_response(category):
             )
         }
 
+    # =====================================================
+    # EXISTING WATER
+    # =====================================================
+
     elif category == "water":
 
         return {
@@ -631,6 +1046,10 @@ def generate_farmer_response(category):
             )
         }
 
+    # =====================================================
+    # EXISTING LEAF
+    # =====================================================
+
     elif category == "leaf":
 
         return {
@@ -659,6 +1078,10 @@ def generate_farmer_response(category):
                 "ಮುಂದಿನ ಹಂತ: ಪೀಡಿತ ಎಲೆಯ photo upload ಮಾಡಿ."
             )
         }
+
+    # =====================================================
+    # EXISTING DISEASE
+    # =====================================================
 
     elif category == "disease":
 
@@ -689,6 +1112,10 @@ def generate_farmer_response(category):
                 "ಮುಂದಿನ ಹಂತ: ಪೀಡಿತ ಬೆಳೆಯ photo upload ಮಾಡಿ."
             )
         }
+
+    # =====================================================
+    # EXISTING FERTILIZER
+    # =====================================================
 
     elif category == "fertilizer":
 
@@ -721,6 +1148,10 @@ def generate_farmer_response(category):
             )
         }
 
+    # =====================================================
+    # UNKNOWN
+    # =====================================================
+
     else:
 
         return {
@@ -730,22 +1161,22 @@ def generate_farmer_response(category):
             ),
 
             "main_advice": [
-                "ದಯವಿಟ್ಟು ಬೆಳೆಯ ಹೆಸರು ತಿಳಿಸಿ.",
-                "ಸಮಸ್ಯೆಯ ಲಕ್ಷಣಗಳನ್ನು ವಿವರಿಸಿ."
+                "ದಯವಿಟ್ಟು ಸಮಸ್ಯೆಯನ್ನು ಸ್ವಲ್ಪ ವಿವರವಾಗಿ ತಿಳಿಸಿ.",
+                "ಸಾಧ್ಯವಾದರೆ ಬೆಳೆಯ ಅಥವಾ ಸಮಸ್ಯೆಯ ವಸ್ತುವಿನ ಹೆಸರನ್ನು ತಿಳಿಸಿ."
             ],
 
             "do": [
-                "ಬೆಳೆಯ ಹೆಸರು ತಿಳಿಸಿ.",
-                "ಸಮಸ್ಯೆಯ photo upload ಮಾಡಿ."
+                "ಸಮಸ್ಯೆಯ ಹೆಸರು ಅಥವಾ ಲಕ್ಷಣಗಳನ್ನು ತಿಳಿಸಿ.",
+                "ಸಾಧ್ಯವಾದರೆ photo upload ಮಾಡಿ."
             ],
 
             "dont": [
-                "ಸಮಸ್ಯೆ ತಿಳಿಯದೆ ಔಷಧಿ ಬಳಸಬೇಡಿ."
+                "ಸಮಸ್ಯೆ ತಿಳಿಯದೆ ಔಷಧಿ ಅಥವಾ repair ಪ್ರಯತ್ನ ಮಾಡಬೇಡಿ."
             ],
 
             "next_step": (
-                "ಬೆಳೆಯ photo upload ಮಾಡಿ ಅಥವಾ ಸಮಸ್ಯೆಯನ್ನು "
-                "ಇನ್ನಷ್ಟು ವಿವರವಾಗಿ ಹೇಳಿ."
+                "ಸಮಸ್ಯೆಯನ್ನು ಇನ್ನಷ್ಟು ವಿವರವಾಗಿ ಹೇಳಿ. "
+                "KrushiVaani ನಿಮಗೆ ಸೂಕ್ತವಾದ ಸಹಾಯ ನೀಡಲು ಪ್ರಯತ್ನಿಸುತ್ತದೆ."
             )
         }
 
