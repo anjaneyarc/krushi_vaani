@@ -18,6 +18,7 @@ from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime, timezone
 from urllib import request as urllib_request
 from urllib import error as urllib_error
 
@@ -665,6 +666,68 @@ class ProblemRequest(BaseModel):
     # Smart Follow-up Conversation
     conversation_id: Optional[str] = None
     previous_context: Optional[dict] = None
+
+    
+# =========================================================
+# ANSWER FEEDBACK API
+# =========================================================
+
+class FeedbackRequest(BaseModel):
+    rating: str
+    question: str
+    answer: str
+    language: str = "Kannada"
+    conversation_id: Optional[str] = None
+
+
+@app.post("/feedback")
+def submit_feedback(feedback: FeedbackRequest):
+
+    rating = feedback.rating.strip().lower()
+
+    if rating not in ["helpful", "not_helpful"]:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=400,
+            detail="Rating must be helpful or not_helpful"
+        )
+
+    feedback_file = os.path.join(
+        os.path.dirname(__file__),
+        "feedback_data.jsonl"
+    )
+
+    record = {
+        "rating": rating,
+        "question": feedback.question,
+        "answer": feedback.answer,
+        "language": feedback.language,
+        "conversation_id": feedback.conversation_id,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    try:
+        with open(
+            feedback_file,
+            "a",
+            encoding="utf-8"
+        ) as file:
+            file.write(
+                json.dumps(record, ensure_ascii=False) + "\n"
+            )
+
+        return {
+            "status": "success",
+            "message": "Feedback saved successfully"
+        }
+
+    except OSError:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to save feedback"
+        )
+
 
 
 # =========================================================
