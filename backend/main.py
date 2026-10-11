@@ -2764,6 +2764,7 @@ def generate_farmer_response(category, problem=None):
 # =========================================================
 # PROBLEM API
 # =========================================================
+@app.post("/problem")
 def receive_problem(data: ProblemRequest):
     problem = data.problem.strip()
 
@@ -2864,20 +2865,6 @@ def receive_problem(data: ProblemRequest):
         combined_problem
     )
 
-    if (
-        smart_response is not None
-        and smart_context.get("intent") in ["crop_problem", "harvest"]
-    ):
-        response = smart_response
-        response_source = "smart_context"
-    else:
-        # Ask Gemini for general questions and follow-ups.
-       response = generate_gemini_farmer_response(
-    problem=combined_problem if is_follow_up else problem,
-    smart_context=smart_context,
-    previous_context=previous_context,
-    language=language
-)
     
     if (
         smart_response is not None
