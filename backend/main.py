@@ -46,8 +46,27 @@ app = FastAPI()
 GEMINI_MODEL = "gemini-3.8-flash"
 
 
-def generate_gemini_farmer_response(problem, smart_context=None, previous_context=None):
-    """Generate a Kannada farming answer; return None if Gemini fails."""
+SUPPORTED_LANGUAGES = [
+    "Kannada",
+    "English",
+    "Hindi",
+    "Telugu",
+    "Tamil",
+    "Malayalam",
+    "Marathi",
+    "Bengali",
+    "Gujarati",
+    "Punjabi",
+]
+
+
+
+def generate_gemini_farmer_response(
+    problem,
+    smart_context=None,
+    previous_context=None,
+    language="Kannada"
+):    """Generate a Kannada farming answer; return None if Gemini fails."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return None
@@ -55,14 +74,26 @@ def generate_gemini_farmer_response(problem, smart_context=None, previous_contex
     try:
         client = genai.Client(api_key=api_key)
 
+   
         prompt = f"""
-You are KrushiVaani, a careful Kannada-speaking farming assistant for Indian farmers.
-Answer primarily in simple, natural Kannada.
-Use the farmer's current question and context; handle follow-up questions using previous context.
-Do not invent certainty about crop diseases, pesticide doses, prices, schemes, phone numbers, or local services.
-If information is insufficient, clearly say what details or photos are needed.
-Do not recommend mixing chemicals or using pesticides without confirming the cause.
-Keep the response practical and farmer-friendly.
+You are KrushiVaani, a careful and practical farming assistant
+for Indian farmers.
+
+The farmer has selected this language: {language}
+
+IMPORTANT LANGUAGE RULE:
+- Write the entire answer in {language}.
+- Translate answer, main_advice, do, dont, and next_step.
+- Do not default to Kannada unless Kannada is selected.
+- Use simple, natural language suitable for Indian farmers.
+- Preserve crop names, quantities, and technical terms accurately.
+- Do not invent pesticide doses, prices, schemes, phone numbers,
+  or local services.
+- If information is insufficient, explain what details or photos
+  are needed.
+- Do not recommend mixing chemicals or pesticides without
+  confirming the cause.
+- Handle follow-up questions using previous context.
 
 Current question:
 {problem}
@@ -75,14 +106,17 @@ Previous conversation context:
 
 Return ONLY a valid JSON object with exactly these keys:
 {{
-  "answer": "Short direct answer in Kannada",
+  "answer": "Direct answer in the selected language",
   "main_advice": ["Practical step 1", "Practical step 2"],
   "do": ["Helpful action"],
   "dont": ["Action to avoid"],
-  "next_step": "One clear next step in Kannada"
+  "next_step": "One clear next step"
 }}
-All values must be in Kannada where practical. main_advice, do, and dont must be arrays of strings.
+
+All text values must be in {language}.
+main_advice, do, and dont must be arrays of strings.
 """
+
 
         result = client.models.generate_content(
             model=GEMINI_MODEL,
@@ -107,11 +141,85 @@ All values must be in Kannada where practical. main_advice, do, and dont must be
 
         return parsed
 
+    
     except Exception as exc:
-        print(f"Gemini response unavailable; using existing system: {type(exc).__name__}")
+    print(
+        f"Gemini response unavailable: "
+        f"{type(exc).__name__}: {exc}"
+    )
+    return None
+
+
+
+def translate_farmer_response(response, language):
+    """Translate a farmer response while preserving its JSON structure."""
+
+    if language == "Kannada":
+        return response
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        print("Gemini response unavailable: GEMINI_API_KEY is missing")
         return None
 
+    try:
+        client = genai.Client(api_key=api_key)
 
+        prompt = f"""
+Translate the following KrushiVaani farming response into {language}.
+
+Rules:
+- Preserve the exact JSON structure and these five keys:
+  answer, main_advice, do, dont, next_step.
+- Keep main_advice, do, and dont as arrays of strings.
+- Translate every user-facing text value into {language}.
+- Do not add or remove advice items.
+- Preserve numbers, crop names, and technical meaning.
+- Do not invent facts or pesticide doses.
+- Return ONLY valid JSON.
+
+Response to translate:
+{json.dumps(response, ensure_ascii=False)}
+"""
+
+        result = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config={"response_mime_type": "application/json"}
+        )
+
+        translated = json.loads(result.text or "")
+
+        required = [
+            "answer",
+            "main_advice",
+            "do",
+            "dont",
+            "next_step"
+        ]
+
+        if not all(key in translated for key in required):
+            return response
+
+        if not isinstance(translated["answer"], str):
+            return response
+
+        if not isinstance(translated["next_step"], str):
+            return response
+
+        for key in ["main_advice", "do", "dont"]:
+            if not isinstance(translated[key], list):
+                return response
+            if not all(isinstance(item, str) for item in translated[key]):
+                return response
+
+        return translated
+
+    except Exception as exc:
+        print(
+            f"Response translation unavailable: {type(exc).__name__}"
+        )
+        return response
 
 # =========================================================
 # CORS
@@ -547,6 +655,7 @@ def home():
 class ProblemRequest(BaseModel):
     problem: str
     location: Optional[str] = None
+    language: str = "Kannada"
 
     # Smart Follow-up Conversation
     conversation_id: Optional[str] = None
@@ -2650,10 +2759,14 @@ def generate_farmer_response(category, problem=None):
 # =========================================================
 # PROBLEM API
 # =========================================================
-
-@app.post("/problem")
 def receive_problem(data: ProblemRequest):
     problem = data.problem.strip()
+
+    language = (
+        data.language
+        if data.language in SUPPORTED_LANGUAGES
+        else "Kannada"
+    )
 
     # 1. Existing category system
     category = classify_problem(problem)
@@ -2754,12 +2867,12 @@ def receive_problem(data: ProblemRequest):
         response_source = "smart_context"
     else:
         # Ask Gemini for general questions and follow-ups.
-        response = generate_gemini_farmer_response(
-            problem=combined_problem if is_follow_up else problem,
-            smart_context=smart_context,
-            previous_context=previous_context
-        )
-
+       response = generate_gemini_farmer_response(
+    problem=combined_problem if is_follow_up else problem,
+    smart_context=smart_context,
+    previous_context=previous_context,
+    language=language
+)
         if response is not None:
             response_source = "gemini"
         else:
@@ -2769,6 +2882,14 @@ def receive_problem(data: ProblemRequest):
                 combined_problem if is_follow_up else problem
             )
             response_source = "existing_system"
+
+                # Translate static Kannada responses into the selected language.
+    # Gemini-generated responses already use the selected language.
+    if response_source != "gemini":
+        response = translate_farmer_response(
+            response,
+            language
+        )
 
     # 6. Save context for the next conversation turn
     next_context = {
