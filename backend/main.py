@@ -61,14 +61,18 @@ SUPPORTED_LANGUAGES = [
 
 
 
+
 def generate_gemini_farmer_response(
     problem,
     smart_context=None,
     previous_context=None,
     language="Kannada"
-):    """Generate a Kannada farming answer; return None if Gemini fails."""
+):
+    """Generate a farming answer in the selected language."""
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
+        print("Gemini response unavailable: GEMINI_API_KEY is missing")
         return None
 
     try:
