@@ -147,11 +147,12 @@ main_advice, do, and dont must be arrays of strings.
 
     
     except Exception as exc:
-    print(
-        f"Gemini response unavailable: "
-        f"{type(exc).__name__}: {exc}"
-    )
-    return None
+        print(
+            f"Gemini response unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return None
+
 
 
 
@@ -2877,6 +2878,22 @@ def receive_problem(data: ProblemRequest):
     previous_context=previous_context,
     language=language
 )
+    
+    if (
+        smart_response is not None
+        and smart_context.get("intent") in ["crop_problem", "harvest"]
+    ):
+        response = smart_response
+        response_source = "smart_context"
+    else:
+        # Ask Gemini for general questions and follow-ups.
+        response = generate_gemini_farmer_response(
+            problem=combined_problem if is_follow_up else problem,
+            smart_context=smart_context,
+            previous_context=previous_context,
+            language=language
+        )
+
         if response is not None:
             response_source = "gemini"
         else:
@@ -2887,13 +2904,14 @@ def receive_problem(data: ProblemRequest):
             )
             response_source = "existing_system"
 
-                # Translate static Kannada responses into the selected language.
-    # Gemini-generated responses already use the selected language.
+    # Translate static responses into the selected language.
     if response_source != "gemini":
         response = translate_farmer_response(
             response,
             language
         )
+
+    
 
     # 6. Save context for the next conversation turn
     next_context = {
